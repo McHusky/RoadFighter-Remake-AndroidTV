@@ -131,7 +131,7 @@ jobs:
         run: |
           set -eu
           mkdir -p dist
-          printf '%s' "$APK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/roadfighter-release.jks"
+          printf '%s' "$APK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/roadfighter-release.p12"
 
           UNSIGNED_APK="build-output/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
@@ -139,7 +139,8 @@ jobs:
 
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -P 16 -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
-            --ks "$RUNNER_TEMP/roadfighter-release.jks" \
+            --ks "$RUNNER_TEMP/roadfighter-release.p12" \
+            --ks-type PKCS12 \
             --ks-key-alias "$APK_KEY_ALIAS" \
             --ks-pass env:APK_KEYSTORE_PASSWORD \
             --key-pass env:APK_KEY_PASSWORD \
