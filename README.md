@@ -18,6 +18,20 @@ RoadFighter-Remake-AndroidTV-v1.0.0.apk
 
 The release also contains `SHA256SUMS.txt` if you want to verify the downloaded APK.
 
+## Gallery
+
+### Artwork & map
+
+| Title artwork | Game map |
+| :---: | :---: |
+| ![Road Fighter Remake title artwork](docs/images/title-artwork.jpg) | ![Road Fighter Remake game map](docs/images/game-map.png) |
+
+### Screenshots
+
+| Main menu | Gameplay | Gameplay | Gameplay |
+| :---: | :---: | :---: | :---: |
+| ![Road Fighter Remake main menu](docs/images/main-menu.png) | ![Road Fighter Remake gameplay screenshot 1](docs/images/gameplay1.png) | ![Road Fighter Remake gameplay screenshot 2](docs/images/gameplay2.png) | ![Road Fighter Remake gameplay screenshot 3](docs/images/gameplay3.png) |
+
 ## Requirements
 
 - Android TV or Google TV
@@ -38,6 +52,8 @@ Other controllers that Android exposes as a normal gamepad or joystick should wo
 5. Install **Road Fighter Remake** and launch it from the TV launcher.
 
 For future releases, download the newer APK and install it over the existing release. Official releases from this repository use the same signing key so normal in-place updates are possible.
+
+> If you previously installed an older development/debug build, Android may reject the first official release because the signatures differ. In that case, uninstall the old test build once and then install the release APK.
 
 ## Controller setup
 
