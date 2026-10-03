@@ -1,0 +1,25 @@
+.gradle/
+.idea/
+local.properties
+**/build/
+app/.cxx/
+app/src/main/cpp/vendor/
+app/src/main/java/org/libsdl/
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+upload_certificate.pem
+.DS_Store
+
+# Runtime data is copied from the pinned upstream Road Fighter checkout.
+app/src/main/assets/roadfighter/maps/
+app/src/main/assets/roadfighter/graphics/
+app/src/main/assets/roadfighter/sound/
+
+# Local tooling output.
+__pycache__/
+*.py[cod]
+upstream-patch-report.txt
+app/src/main/assets/roadfighter/fonts/*.ttf

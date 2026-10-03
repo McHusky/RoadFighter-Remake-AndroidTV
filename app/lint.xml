@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      tools/fetch-native-deps.sh copies the pinned SDL 2.32.10 Android Java
+      glue into src/main/java/org/libsdl. It is third-party upstream code and
+      includes optional HID/Bluetooth paths which are not used by this port.
+      Keep lint strict for the app itself while excluding only that copied tree.
+    -->
+    <issue id="all">
+        <ignore path="src/main/java/org/libsdl/**" />
+    </issue>
+</lint>

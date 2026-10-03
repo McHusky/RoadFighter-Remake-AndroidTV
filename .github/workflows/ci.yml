@@ -1,0 +1,165 @@
+name: Android TV build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+    tags: [ "v*" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android build tools
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.16248370" "cmake;3.22.1"
+
+      - name: Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+
+      - name: Test SDL AAudio patcher offline and prepare native sources
+        run: |
+          python3 ./tools/test_prepare_sdl_audio_fixture.py
+          bash ./tools/fetch-native-deps.sh
+          python3 ./tools/test_prepare_upstream_compat.py
+          python3 ./tools/normalize_map_paths.py
+          python3 ./tools/prepare_upstream.py
+
+      - name: Build and lint
+        run: |
+          gradle --no-daemon :app:assembleDebug :app:assembleRelease :app:bundleRelease :app:lintRelease
+
+      - name: Check ARM ABIs and 16 KB compatibility
+        run: |
+          python3 ./tools/check_native_release.py \
+            --aab app/build/outputs/bundle/release/app-release.aab \
+            --apk app/build/outputs/apk/release/app-release-unsigned.apk \
+            --llvm-readelf "$ANDROID_SDK_ROOT/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" \
+            --zipalign "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign"
+
+      - name: Upload build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: roadfighter-android-tv-${{ github.sha }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check tag matches app version
+        run: |
+          set -eu
+          VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match app version v$VERSION" >&2
+            exit 1
+          fi
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install APK signing tools
+        run: sdkmanager "build-tools;36.0.0"
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: roadfighter-android-tv-${{ github.sha }}
+          path: build-output
+
+      - name: Check release signing secrets
+        env:
+          APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
+          APK_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
+          APK_KEY_ALIAS: ${{ secrets.APK_KEY_ALIAS }}
+          APK_KEY_PASSWORD: ${{ secrets.APK_KEY_PASSWORD }}
+        run: |
+          set -eu
+          for name in APK_KEYSTORE_BASE64 APK_KEYSTORE_PASSWORD APK_KEY_ALIAS APK_KEY_PASSWORD; do
+            eval "value=\${$name:-}"
+            if [ -z "$value" ]; then
+              echo "Missing GitHub Actions secret: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Sign release APK
+        env:
+          APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
+          APK_KEYSTORE_PASSWORD: ${{ secrets.APK_KEYSTORE_PASSWORD }}
+          APK_KEY_ALIAS: ${{ secrets.APK_KEY_ALIAS }}
+          APK_KEY_PASSWORD: ${{ secrets.APK_KEY_PASSWORD }}
+        run: |
+          set -eu
+          mkdir -p dist
+          printf '%s' "$APK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/roadfighter-release.jks"
+
+          UNSIGNED_APK="build-output/apk/release/app-release-unsigned.apk"
+          ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
+          RELEASE_APK="dist/RoadFighter-Remake-AndroidTV-${GITHUB_REF_NAME}.apk"
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -P 16 -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/roadfighter-release.jks" \
+            --ks-key-alias "$APK_KEY_ALIAS" \
+            --ks-pass env:APK_KEYSTORE_PASSWORD \
+            --key-pass env:APK_KEY_PASSWORD \
+            --out "$RELEASE_APK" \
+            "$ALIGNED_APK"
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$RELEASE_APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$RELEASE_APK"
+          sha256sum "$RELEASE_APK" > dist/SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --verify-tag \
+              --title "Road Fighter Remake Android TV ${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
